@@ -1,0 +1,196 @@
+#!/bin/sh
+#Author - Vojtech Sima(xsimav01)
+export POSIXLY_CORRECT=yes
+I=0
+NOR=0
+ND=0	#pocet adresaru
+NF=0	#pocet souboru
+DIR="$(pwd)" #by default nastaveni aktualniho
+
+file100B=0
+file1KiB=0
+file10KiB=0
+file100KiB=0
+file1MiB=0
+file10MiB=0
+file100MiB=0
+file1GiB=0
+fileMore=0
+max=0
+pomer=0
+I=''
+neprohledavatslozku=0
+nepocitat=0
+size=0
+system=$(uname) #nacteni os
+
+while getopts i:n o
+do
+	case "$o" in
+	i) I=$OPTARG;;
+	n) NOR=1;;
+	*) echo "Spatny prepinac"  >&2
+	exit 1;;
+	esac
+done
+shift $(( OPTIND-1 ))
+
+if [ $# -gt 1 ]; then			#kontrola poctu argumentu po precteni prepinacu
+echo "Zadano moc argumentu" >&2
+exit 1
+fi
+
+if [ -z "$1" ]; then			#ulozeni bud aktualniho nebo zadaneho adresare
+DIR="$(pwd)"
+else 
+DIR="$1"
+fi
+
+
+if [ ! -d "$DIR" ]; then 		#kontrola zda slozka vubec existuje 
+	echo "Slozka neexistuje" >&2
+	exit 1
+fi
+
+if [ "$I" ]; then
+
+	if echo "$DIR" | grep -qi "$I" 2> /dev/null; then
+		echo "Ignorovana slozka stejna jako korenova-nelze" >&2	
+		exit 1
+	fi
+
+fi
+
+for d in $( (find "$DIR" -type d | xargs -0) 2> /dev/null)
+do		
+		if [ "$I" ]; then #kontrola zda -i nepokryva slozku
+			if echo "$d" | grep -qi "$I" 2> /dev/null; then
+				neprohledavatslozku=1
+			fi
+		fi
+
+		if [ "$neprohledavatslozku" -eq 0 ]; then #pokud nepokryva, hleda soubory 
+			ND=$(( ND + 1 ))
+			for f in $( (find "$d" -type f -maxdepth 1 | xargs -0) 2> /dev/null) #pouze aktualni slozka
+			do
+		
+			if [ "$I" ]; then #kontrola zda -i nepokryva soubor
+				if echo "$f" | grep -qi "$I" 2> /dev/null; then
+				nepocitat=1
+				fi
+			fi
+
+			if [ "$nepocitat" -eq 0 ]; then
+				NF=$(( NF + 1 ))
+				
+				if [ "$system" = 'FreeBSD' ]; then
+					size=$(stat -f %z "$f")
+					else 
+					size=$(stat -c %s "$f")  #kontrola velikosti souboru
+				fi	
+		
+				if [ "$size" -lt 100 ]; then file100B=$((file100B+1))
+				elif [ "$size" -lt 1024 ]; then file1KiB=$((file1KiB+1))
+				elif [ "$size" -lt 10240 ]; then file10KiB=$((file10KiB+1)) 
+				elif [ "$size" -lt 102400 ]; then file100KiB=$((file100KiB+1)) 
+				elif [ "$size" -lt 1048576 ]; then file1MiB=$((file1MiB+1))
+				elif [ "$size" -lt 10485760 ]; then file10MiB=$((file10MiB+1))
+				elif [ "$size" -lt 104857600 ]; then file100MiB=$((file100MiB+1))
+				elif [ "$size" -lt 1073741824 ]; then file1GiB=$((file1GiB+1))		
+				elif [ "$size" -gt 1073741823 ]; then fileMore=$((fileMore+1))	
+				fi
+			fi
+			nepocitat=0
+
+			done
+		fi
+		neprohledavatslozku=0
+
+done
+
+hestegy ()  #funkce na vytisknuti # 
+{	POM=$1
+	while [ "$POM" -ne 0 ]
+	do
+	printf "#"
+	POM=$(( POM - 1 ))
+	done	
+	printf '\n'
+}
+
+	
+if [ "$NOR" -eq 1 ]; then #pokud je prepinac -n (normalizace)
+	
+	sirka=79
+	
+	if [ -t 1 ]; then #pritomnost terminalu
+	sirka=$(tput cols)
+	fi
+
+	sirka=$((sirka-13))
+ 	
+	max=$file1KiB 
+
+	if [ "$file1KiB" -gt "$max" ]; then	 #hledani nejvetsiho poctu
+ 		max="$file1KiB"
+	fi
+
+	if [ "$file10KiB" -gt "$max" ]; then
+ 		max="$file10KiB" 
+	fi
+
+	if [ "$file100KiB" -gt "$max" ]; then
+ 		max="$file100KiB"
+	fi
+	
+	if [ "$file1MiB" -gt "$max" ]; then
+ 		max="$file1MiB"
+	fi
+
+	if [ "$file10MiB" -gt "$max" ]; then
+ 		max="$file10MiB"
+	fi
+
+	if [ "$file100MiB" -gt "$max" ]; then
+ 		max="$file100MiB"
+	fi
+
+	
+	if [ "$file1GiB" -gt "$max" ]; then
+ 		max="$file1GiB"
+	fi
+
+	if [ "$fileMore" -gt "$max" ]; then
+ 		max="$fileMore"
+	fi
+
+	if [ "$max" -gt "$sirka" ]; then
+	pomer=$((max / sirka))
+	pomer=$((pomer+1)) #aby tam nebyla nula
+	file100B=$((file100B / pomer))
+	file1KiB=$((file1KiB / pomer))
+	file10KiB=$((file10KiB / pomer))
+	file100KiB=$((file100KiB / pomer))
+	file1MiB=$((file1MiB / pomer))
+	file10MiB=$((file10MiB / pomer))	
+	file100MiB=$((file100MiB / pomer))
+	file1GiB=$((file1GiB / pomer))	
+	fileMore=$((fileMore / pomer))
+	fi
+			
+fi
+
+echo "Root directory: $DIR"
+echo "Directories: $ND"
+echo "All files: $NF"
+echo "File size histogram:"
+printf "  <100B	  : "; hestegy "${file100B}" 
+printf "  <1 KiB  : "; hestegy "${file1KiB}" 
+printf "  <10 KiB : "; hestegy "${file10KiB}" 
+printf "  <100 KiB: "; hestegy "${file100KiB}" 
+printf "  <1 MiB  : "; hestegy "${file1MiB}" 
+printf "  <10 MiB : "; hestegy "${file10MiB}" 
+printf "  <100 MiB: "; hestegy "${file100MiB}"
+printf "  <1 GiB  : "; hestegy "${file1GiB}"  
+printf "  >=1 GiB : "; hestegy "${fileMore}"  
+exit 0
